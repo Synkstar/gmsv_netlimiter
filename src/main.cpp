@@ -55,7 +55,7 @@ namespace global
 
 		// Reset the processing time if it has been more than a milisecond since the last reset
 		TimePair &Data = ProcessingTimes[Channel];
-		if (Data.second < End.time_since_epoch() + std::chrono::milliseconds(1))
+		if (End.time_since_epoch() < Data.second + std::chrono::milliseconds(1))
 		{
 			Data.first = 0;
 			Data.second = End.time_since_epoch();
