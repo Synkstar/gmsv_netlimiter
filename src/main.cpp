@@ -25,7 +25,7 @@ namespace global
 	FunctionPointers::CNetChan_ProcessMessages_t ProcessMessages_original = nullptr;
 
 	// Create a pair of a uint64 and a chrono::duration
-	using TimePair = std::pair<uint64, std::chrono::duration<int64_t, std::nano>>;
+	using TimePair = std::pair<double, std::chrono::duration<int64_t, std::nano>>;
 	Detouring::Hook ProcessMessagesHook;
 	std::map<CNetChan *, TimePair> ProcessingTimes;
 
@@ -47,15 +47,17 @@ namespace global
 		std::chrono::time_point Start = std::chrono::system_clock::now();
 		bool Return = Trampoline(Channel, Buffer);
 		std::chrono::time_point End = std::chrono::system_clock::now();
-		const std::chrono::duration<int64_t, std::nano>::rep MS = ((End.time_since_epoch() - Start.time_since_epoch()) / 1000 / 1000).count();
+		const double MS = ((End.time_since_epoch() - Start.time_since_epoch()) / 1000.0f / 1000.0f).count();
 
 		// Create a new entry if the client is not in the map
 		if (ProcessingTimes.find(Channel) == ProcessingTimes.end())
-			ProcessingTimes[Channel] = std::make_pair<uint64, std::chrono::duration<int64_t, std::nano>>(0, std::chrono::system_clock::time_point::duration(0));
+			ProcessingTimes[Channel] = std::make_pair<double, std::chrono::duration<int64_t, std::nano>>(0, std::chrono::system_clock::time_point::duration(0));
 
 		// Reset the processing time if it has been more than a milisecond since the last reset
 		TimePair &Data = ProcessingTimes[Channel];
-		if (End.time_since_epoch() < Data.second + std::chrono::milliseconds(1))
+
+		// Check if the time has been more than a milisecond since the last reset
+		if (Data.second + std::chrono::seconds(1) < End.time_since_epoch())
 		{
 			Data.first = 0;
 			Data.second = End.time_since_epoch();
@@ -65,8 +67,11 @@ namespace global
 		Data.first += MS;
 
 		// Check if the client has exceeded the limit
-		if ((int)Data.first >= net_chan_limit_msec->GetInt())
+		if (Data.first >= net_chan_limit_msec->GetInt())
 		{
+			// Shutdown the client
+			Data.first = 0;
+			Data.second = End.time_since_epoch();
 			Channel->Shutdown("Exceeded net processing time.");
 
 			return false;
